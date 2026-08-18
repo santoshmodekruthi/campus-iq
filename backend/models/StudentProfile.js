@@ -66,7 +66,11 @@ studentProfileSchema.pre('save', function(next) {
   next();
 });
 
+// Index for faster querying by risk level
+studentProfileSchema.index({ riskLevel: 1 });
+
 export default mongoose.model('StudentProfile', studentProfileSchema);
+
 
 
 

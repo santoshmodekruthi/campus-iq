@@ -11,7 +11,6 @@ export default async function storeEvent({ input }) {
     processed: false,
   });
 
-  console.log(`📝 [Motia Step] Event stored: ${eventType} for ${student.name}`);
 
   return {
     ...input,
@@ -19,6 +18,7 @@ export default async function storeEvent({ input }) {
     eventId: event._id,
   };
 }
+
 
 
 

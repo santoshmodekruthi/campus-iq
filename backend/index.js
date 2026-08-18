@@ -19,9 +19,8 @@ const PORT = process.env.PORT || 5000;
 ======================= */
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://edurisk-monitor-frontend.vercel.app',
+  process.env.FRONTEND_URL || 'https://edurisk-monitor-frontend.vercel.app',
 ];
-
 
 app.use(
   cors({
@@ -49,7 +48,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // Logger
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} | ${req.method} ${req.path}`);
   next();
 });
 
@@ -80,7 +78,7 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.message);
+  console.error(' Error:', err.message);
   res.status(500).json({
     success: false,
     message: err.message || 'Internal server error',
@@ -94,13 +92,12 @@ const startServer = async () => {
   try {
     await connectDB();
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📍 Health: /health`);
     });
   } catch (err) {
-    console.error('❌ Failed to start server:', err);
+    console.error(' Failed to start server:', err);
     process.exit(1);
   }
 };
 
 startServer();
+

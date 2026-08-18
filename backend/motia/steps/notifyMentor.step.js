@@ -22,9 +22,6 @@ export default async function notifyMentor({ input }) {
       timestamp: new Date(),
     };
 
-    console.log(`🚨 [Motia Step] Alert sent to ${mentors.length} mentor(s)`);
-    console.log(`   Student: ${student.name} | Risk: ${riskLevel}`);
-    console.log(`   Reasons: ${riskReasons.join(', ')}`);
 
     return {
       ...input,
@@ -33,7 +30,6 @@ export default async function notifyMentor({ input }) {
     };
   }
 
-  console.log(`✅ [Motia Step] No mentor notification needed`);
 
   return {
     ...input,
@@ -41,6 +37,7 @@ export default async function notifyMentor({ input }) {
     mentorsNotified: 0,
   };
 }
+
 
 
 

@@ -47,7 +47,6 @@ export default async function validateStudentEvent({ input }) {
       break;
   }
 
-  console.log(`✅ [Motia Step] Event validated for student: ${student.name}`);
 
   return {
     validated: true,
@@ -56,6 +55,7 @@ export default async function validateStudentEvent({ input }) {
     eventData,
   };
 }
+
 
 
 

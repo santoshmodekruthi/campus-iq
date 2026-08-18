@@ -69,7 +69,11 @@ userSchema.methods.toJSON = function() {
   return obj;
 };
 
+// Index for role-based queries
+userSchema.index({ role: 1 });
+
 export default mongoose.model('User', userSchema);
+
 
 
 

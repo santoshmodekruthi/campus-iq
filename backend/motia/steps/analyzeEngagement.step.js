@@ -57,14 +57,13 @@ export default async function analyzeEngagement({ input }) {
 
   await profile.save();
 
-  console.log(`📊 [Motia Step] Engagement analyzed for ${student.name}`);
-  console.log(`   Stats: ${JSON.stringify(profile.statistics, null, 2)}`);
 
   return {
     ...input,
     profile,
   };
 }
+
 
 
 

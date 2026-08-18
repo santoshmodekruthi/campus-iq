@@ -32,9 +32,7 @@ export default async function detectDropoutRisk({ input }) {
 
   const riskChanged = profile.riskLevel !== input.profile?.riskLevel;
 
-  console.log(`🚨 [Motia Step] Risk detected: ${riskLevel} for ${student.name}`);
   if (riskReasons.length > 0) {
-    console.log(`   Reasons: ${riskReasons.join(', ')}`);
   }
 
   return {
@@ -45,6 +43,7 @@ export default async function detectDropoutRisk({ input }) {
     profile,
   };
 }
+
 
 
 

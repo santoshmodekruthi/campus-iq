@@ -15,8 +15,6 @@ export default async function notifyStudent({ input }) {
       timestamp: new Date(),
     };
 
-    console.log(`📧 [Motia Step] Notification sent to student: ${student.name}`);
-    console.log(`   Message: ${notification.message}`);
 
     return {
       ...input,
@@ -24,7 +22,6 @@ export default async function notifyStudent({ input }) {
     };
   }
 
-  console.log(`✅ [Motia Step] No notification needed for ${student.name} (Risk: ${riskLevel})`);
 
   return {
     ...input,
@@ -52,6 +49,7 @@ function getRecommendations(riskReasons) {
   
   return recommendations;
 }
+
 
 
 

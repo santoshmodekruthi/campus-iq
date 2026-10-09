@@ -7,10 +7,9 @@ export default {
     'analyzeEngagement',
     'detectDropoutRisk',
     'notifyStudent',
-    'notifyMentor',
+    'notifyAdmin',
   ],
 };
-
 
 
 

@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node index.js",
+    "seed:students": "node scripts/seedStudents.js",
+    "seed:admin": "node scripts/seedAdmin.js",
+    "test": "node --test"
   },
   "keywords": ["motia", "event-driven", "education", "dropout-detection"],
   "license": "MIT",
@@ -20,8 +23,6 @@
     "node-fetch": "^3.3.2"
   }
 }
-
-
 
 
 

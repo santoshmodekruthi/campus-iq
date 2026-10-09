@@ -1,36 +1,19 @@
-// config/motia.js
 import fetch from 'node-fetch';
 
-/**
- * Trigger a Motia workflow event
- * @param {string} eventName
- * @param {object} payload
- */
 export async function triggerMotiaEvent(eventName, payload) {
-  try {
-    const response = await fetch(process.env.MOTIA_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.MOTIA_API_KEY}`
-      },
-      body: JSON.stringify({
-        event: eventName,
-        payload,
-        source: 'student-dropout-backend',
-        timestamp: new Date().toISOString()
-      })
-    });
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('❌ Motia event trigger failed:', error.message);
-  }
+  if (!process.env.MOTIA_WEBHOOK_URL) throw new Error('MOTIA_WEBHOOK_URL is not configured');
+  const headers = { 'Content-Type': 'application/json' };
+  if (process.env.MOTIA_API_KEY) headers.Authorization = `Bearer ${process.env.MOTIA_API_KEY}`;
+  const response = await fetch(process.env.MOTIA_WEBHOOK_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      event: eventName,
+      payload,
+      source: 'campus-iq-backend',
+      timestamp: new Date().toISOString(),
+    }),
+  });
+  if (!response.ok) throw new Error(`Motia returned HTTP ${response.status}`);
+  return response.json();
 }
-
-
-
-
-
-

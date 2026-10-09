@@ -1,103 +1,66 @@
 import dotenv from 'dotenv';
-dotenv.config(); // MUST be first
+dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
 import { connectDB } from './config/db.js';
-
-// Routes
 import authRoutes from './routes/auth.routes.js';
 import studentRoutes from './routes/student.routes.js';
-import mentorRoutes from './routes/mentor.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-/* =======================
-   CORS CONFIG (FIXED)
-======================= */
-const allowedOrigins = [
+const PORT = Number(process.env.PORT || 5000);
+const configuredOrigins = (process.env.FRONTEND_ORIGIN || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const allowedOrigins = new Set([
   'http://localhost:5173',
-  process.env.FRONTEND_URL || 'https://edurisk-monitor-frontend.vercel.app',
-];
+  'http://127.0.0.1:5173',
+  ...configuredOrigins,
+]);
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // allow server-to-server & Postman
-      if (!origin) return callback(null, true);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error(`CORS blocked: ${origin}`));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
-
-/* =======================
-   MIDDLEWARES
-======================= */
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Logger
-app.use((req, res, next) => {
-  next();
-});
-
-/* =======================
-   ROUTES
-======================= */
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Server running',
-    time: new Date().toISOString(),
-  });
-});
+app.get('/health', (req, res) => res.json({
+  success: true,
+  message: 'CAMPUS IQ API is running',
+  time: new Date().toISOString(),
+}));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/student', studentRoutes);
-app.use('/api/mentor', mentorRoutes);
 app.use('/api/admin', adminRoutes);
 
-/* =======================
-   ERROR HANDLING
-======================= */
-app.use((req, res) => {
-  res.status(404).json({
+app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
+app.use((error, req, res, next) => {
+  console.error('Request error:', error.message);
+  if (res.headersSent) return next(error);
+  res.status(error.message.startsWith('CORS blocked') ? 403 : 500).json({
     success: false,
-    message: 'Route not found',
+    message: error.message.startsWith('CORS blocked') ? 'Request origin is not allowed' : 'Internal server error',
   });
 });
 
-app.use((err, req, res, next) => {
-  console.error(' Error:', err.message);
-  res.status(500).json({
-    success: false,
-    message: err.message || 'Internal server error',
-  });
-});
-
-/* =======================
-   START SERVER
-======================= */
-const startServer = async () => {
-  try {
-    await connectDB();
-    app.listen(PORT, () => {
-    });
-  } catch (err) {
-    console.error(' Failed to start server:', err);
-    process.exit(1);
+async function startServer() {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters');
   }
-};
+  await connectDB();
+  app.listen(PORT, () => console.info(`CAMPUS IQ API listening on port ${PORT}`));
+}
 
-startServer();
-
+startServer().catch((error) => {
+  console.error('Failed to start CAMPUS IQ API:', error.message);
+  process.exitCode = 1;
+});

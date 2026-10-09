@@ -1,52 +1,30 @@
+import User from '../../models/User.js';
 import StudentProfile from '../../models/StudentProfile.js';
+import { applyAcademicRisk } from '../../services/analytics.js';
 
 export default async function detectDropoutRisk({ input }) {
-  const { student, profile } = input;
+  const studentId = input.student?._id || input.student?.id || input.studentId;
+  const student = await User.findById(studentId);
+  if (!student || student.role !== 'student') throw new Error('Student record for risk assessment was not found');
 
-  let riskLevel = 'Low';
-  const riskReasons = [];
+  const previousRisk = student.riskLevel;
+  const assessment = applyAcademicRisk(student);
+  await student.save();
 
-  // Rule 1: 3 consecutive absences → Medium Risk
-  if (profile.statistics.consecutiveAbsences >= 3) {
-    riskLevel = 'Medium';
-    riskReasons.push(`${profile.statistics.consecutiveAbsences} consecutive absences`);
-  }
-
-  // Rule 2: Missed 2 assignments → High Risk
-  if (profile.statistics.assignmentsMissed >= 2) {
-    riskLevel = 'High';
-    riskReasons.push(`${profile.statistics.assignmentsMissed} missed assignments`);
-  }
-
-  // Rule 3: Average performance < 40% → High Risk
-  if (profile.statistics.performanceScores.length > 0 && 
-      profile.statistics.averagePerformance < 40) {
-    riskLevel = 'High';
-    riskReasons.push(`low performance (${profile.statistics.averagePerformance.toFixed(1)}%)`);
-  }
-
-  // Update profile with risk assessment
-  profile.riskLevel = riskLevel;
-  profile.riskReason = riskReasons.join(', ') || 'No risk detected';
-  await profile.save();
-
-  const riskChanged = profile.riskLevel !== input.profile?.riskLevel;
-
-  if (riskReasons.length > 0) {
+  const profile = await StudentProfile.findOne({ userId: student._id });
+  if (profile) {
+    profile.riskLevel = student.riskLevel;
+    profile.riskReason = student.riskReasons.join(', ');
+    await profile.save();
   }
 
   return {
     ...input,
-    riskLevel,
-    riskReasons,
-    riskChanged,
+    riskLevel: assessment.riskLevel,
+    riskReasons: assessment.riskReasons,
+    recommendations: assessment.recommendations,
+    riskChanged: previousRisk !== assessment.riskLevel,
     profile,
+    student: student.toJSON(),
   };
 }
-
-
-
-
-
-
-

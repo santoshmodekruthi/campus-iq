@@ -43,7 +43,8 @@ const EngagementForm = ({ onSubmit, loading }) => {
 
   return (
     <form onSubmit={handleSubmit} className="card">
-      <h3 className="text-lg font-semibold mb-4">Submit Engagement Event</h3>
+      <h3 className="text-lg font-semibold mb-2">Share a learning activity</h3>
+      <p className="text-sm text-gray-500 mb-4">This student-reported activity does not change official attendance, grades, or risk metrics.</p>
       
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -152,7 +153,6 @@ const EngagementForm = ({ onSubmit, loading }) => {
 };
 
 export default EngagementForm;
-
 
 
 

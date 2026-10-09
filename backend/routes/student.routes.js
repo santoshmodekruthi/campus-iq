@@ -1,109 +1,120 @@
 import express from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole, requirePasswordChangeComplete } from '../middleware/auth.js';
 import { triggerMotiaEvent } from '../config/motia.js';
 import StudentProfile from '../models/StudentProfile.js';
 import EngagementEvent from '../models/EngagementEvent.js';
+import User from '../models/User.js';
 
 const router = express.Router();
+router.use(authenticate, requireRole('student'), requirePasswordChangeComplete);
 
-/* =========================
-   AUTH MIDDLEWARE
-========================= */
-router.use(authenticate);
-
-/* =========================
-   GET /student/dashboard
-========================= */
 router.get('/dashboard', async (req, res) => {
   try {
-    // Only students allowed
-    if (req.user.role !== 'student') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    const studentId = req.user._id;
-
-    // Fetch profile
-    const profile = await StudentProfile.findOne({ userId: studentId });
-
-    // Fetch recent engagement events
-    const events = await EngagementEvent.find({ studentId })
-      .sort({ createdAt: -1 })
-      .limit(10);
-
+    const [profile, recentEvents] = await Promise.all([
+      StudentProfile.findOne({ userId: req.user._id }).lean(),
+      EngagementEvent.find({ studentId: req.user._id }).sort({ createdAt: -1 }).limit(50).lean(),
+    ]);
+    const student = req.user.toJSON();
+    const stats = profile?.statistics || {};
     res.json({
       success: true,
       data: {
-        student: {
-          id: req.user._id,
-          name: req.user.name,
-          email: req.user.email,
+        student,
+        profile: {
+          riskLevel: student.riskLevel,
+          riskReason: student.riskReasons.join(', '),
+          riskReasons: student.riskReasons,
+          recommendations: student.recommendations,
+          statistics: {
+            ...stats,
+            averagePerformance: student.academicMarks.length
+              ? student.academicMarks.reduce((sum, mark) => sum + mark, 0) / student.academicMarks.length
+              : 0,
+            performanceScores: student.academicMarks,
+          },
         },
-        profile,
-        recentEvents: events,
+        recentEvents,
+        metrics: {
+          attendancePercentage: student.attendancePercentage,
+          assignmentCompletionRate: student.assignmentCompletion,
+          gpa: student.gpa,
+          riskLevel: student.riskLevel,
+        },
       },
     });
   } catch (error) {
-    console.error('Dashboard error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to load dashboard',
-    });
+    console.error('Student dashboard error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to load dashboard' });
   }
 });
 
-/* =========================
-   POST /student/event
-========================= */
+router.patch('/profile', async (req, res) => {
+  try {
+    const allowed = ['name', 'email', 'mobileNumber'];
+    const keys = Object.keys(req.body || {});
+    if (keys.length === 0 || keys.some((key) => !allowed.includes(key))) {
+      return res.status(400).json({ success: false, message: 'Only name, email, and mobile number can be updated' });
+    }
+    if (req.body.name !== undefined) {
+      if (typeof req.body.name !== 'string' || req.body.name.trim().length < 2 || req.body.name.trim().length > 100) {
+        return res.status(400).json({ success: false, message: 'Name must be between 2 and 100 characters' });
+      }
+      req.user.name = req.body.name.trim();
+    }
+    if (req.body.email !== undefined) {
+      const email = String(req.body.email).trim().toLowerCase();
+      if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ success: false, message: 'Enter a valid email address' });
+      const existing = await User.findOne({ email, _id: { $ne: req.user._id } });
+      if (existing) return res.status(409).json({ success: false, message: 'Email address is already in use' });
+      req.user.email = email;
+    }
+    if (req.body.mobileNumber !== undefined) {
+      if (!/^\+?[0-9]{10,15}$/.test(String(req.body.mobileNumber))) return res.status(400).json({ success: false, message: 'Enter a valid mobile number' });
+      req.user.mobileNumber = String(req.body.mobileNumber);
+    }
+    await req.user.save();
+    res.json({ success: true, data: { user: req.user.toJSON() } });
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ success: false, message: 'Email address is already in use' });
+    console.error('Student profile update error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to update profile' });
+  }
+});
+
 router.post('/event', async (req, res) => {
   try {
-    const { eventType, eventData } = req.body;
-    const studentId = req.user._id;
+    const { eventType, eventData = {} } = req.body || {};
+    const isValid =
+      (eventType === 'attendance' && ['present', 'absent'].includes(eventData.status)) ||
+      (eventType === 'assignment' && typeof eventData.submitted === 'boolean' && typeof eventData.assignmentName === 'string' && eventData.assignmentName.trim()) ||
+      (eventType === 'performance' && typeof eventData.score === 'number' && eventData.score >= 0 && eventData.score <= 100 && typeof eventData.testName === 'string' && eventData.testName.trim());
+    if (!isValid) return res.status(400).json({ success: false, message: 'Provide valid attendance, assignment, or performance event details' });
 
-    if (req.user.role !== 'student') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only students can submit engagement events',
-      });
+    const event = await EngagementEvent.create({ studentId: req.user._id, eventType, eventData });
+    let workflow = { status: 'not-configured' };
+    if (process.env.MOTIA_WEBHOOK_URL) {
+      try {
+        await triggerMotiaEvent('STUDENT_EVENT', {
+          studentId: req.user._id,
+          eventType,
+          eventData,
+          eventId: event._id,
+        });
+        workflow = { status: 'sent' };
+      } catch (error) {
+        workflow = { status: 'failed', message: error.message };
+        console.error('Motia workflow error:', error.message);
+      }
     }
-
-    // 1️⃣ Save engagement event
-    const engagementEvent = await EngagementEvent.create({
-      studentId,
-      eventType,
-      eventData,
-    });
-
-    // 2️⃣ Trigger Motia workflow
-    const motiaResult = await triggerMotiaEvent('STUDENT_EVENT', {
-      studentId,
-      eventType,
-      eventData,
-      eventId: engagementEvent._id,
-    });
-
-    res.json({
+    res.status(201).json({
       success: true,
-      message: 'Event submitted & Motia workflow triggered',
-      data: {
-        eventId: engagementEvent._id,
-        motiaResult,
-      },
+      message: 'Student-reported activity saved. Official academic records are unchanged.',
+      data: { eventId: event._id, workflow },
     });
   } catch (error) {
-    console.error('Event submission error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to submit event',
-    });
+    console.error('Student event submission error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to save engagement event' });
   }
 });
 
 export default router;
-
-
-
-

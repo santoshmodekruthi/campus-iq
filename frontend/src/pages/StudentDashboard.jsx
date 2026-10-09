@@ -1,220 +1,159 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import RiskBadge from '../components/RiskBadge';
 import EngagementForm from '../components/EngagementForm';
 import EngagementChart from '../components/EngagementChart';
 import { studentAPI } from '../services/api';
 
-const StudentDashboard = ({ user, onLogout }) => {
+const StudentDashboard = ({ user, onUserUpdate, onLogout }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [success, setSuccess] = useState('');
+  const [profileForm, setProfileForm] = useState({ name: user.name, email: user.email, mobileNumber: user.mobileNumber || '' });
 
   const loadDashboard = async () => {
     try {
       const response = await studentAPI.getDashboard();
-      if (response.data.success) {
-        setDashboardData(response.data.data);
-      }
-    } catch (err) {
-      setError('Failed to load dashboard data');
-      console.error(err);
+      setDashboardData(response.data.data);
+      const student = response.data.data.student;
+      setProfileForm({ name: student.name, email: student.email, mobileNumber: student.mobileNumber || '' });
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to load your dashboard. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  useEffect(() => { loadDashboard(); }, []);
 
-  const handleEventSubmit = async (eventData) => {
+  const handleEventSubmit = async (event) => {
     setSubmitting(true);
     setError('');
-    setSuccessMessage('');
-
+    setSuccess('');
     try {
-      const response = await studentAPI.submitEvent(eventData);
-      if (response.data.success) {
-        setSuccessMessage('Event submitted successfully! Your profile has been updated.');
-        // Reload dashboard to show updated data
-        await loadDashboard();
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to submit event');
+      await studentAPI.submitEvent(event);
+      setSuccess('Your activity was saved. Official academic records remain unchanged.');
+      await loadDashboard();
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to save activity.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar user={user} onLogout={onLogout} />
-        <div className="flex items-center justify-center h-96">
-          <div className="text-xl text-gray-600">Loading dashboard...</div>
-        </div>
-      </div>
-    );
-  }
+  const handleProfileSave = async (event) => {
+    event.preventDefault();
+    setSavingProfile(true);
+    setError('');
+    setSuccess('');
+    try {
+      const response = await studentAPI.updateProfile(profileForm);
+      onUserUpdate(response.data.data.user);
+      setDashboardData((data) => ({ ...data, student: response.data.data.user }));
+      setEditingProfile(false);
+      setSuccess('Your profile was updated.');
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to update your profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
-  const { profile, recentEvents, metrics } = dashboardData || {};
+  if (loading) return <div className="min-h-screen bg-gray-50"><Navbar user={user} onLogout={onLogout} /><div className="p-12 text-center text-gray-600">Loading your student records...</div></div>;
+
+  const { student, profile, recentEvents = [], metrics = {} } = dashboardData || {};
+  if (!student) {
+    return <div className="min-h-screen bg-gray-50"><Navbar user={user} onLogout={onLogout} /><div className="max-w-3xl mx-auto p-8"><div role="alert" className="card text-red-700">{error || 'Your student record could not be loaded.'}<button onClick={loadDashboard} className="btn-secondary ml-4">Retry</button></div></div></div>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar user={user} onLogout={onLogout} />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome, {user.name}! 👋
-          </h1>
-          <p className="text-gray-600">
-            {user.course} - Year {user.year}
-          </p>
-        </div>
-
-        {/* Alerts */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
+      <Navbar user={student} onLogout={onLogout} />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <header className="mb-7 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-blue-700">{student.college} · {student.registrationNumber}</p>
+            <h1 className="text-3xl font-bold text-gray-900 mt-1">Welcome, {student.name}</h1>
+            <p className="text-gray-600 mt-1">{student.department} · Semester {student.semester} · Academic year {student.academicYear}</p>
           </div>
+          <button className="btn-secondary" onClick={() => setEditingProfile((editing) => !editing)}>{editingProfile ? 'Cancel profile edit' : 'Edit permitted profile details'}</button>
+        </header>
+
+        {error && <div role="alert" className="mb-5 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>}
+        {success && <div role="status" className="mb-5 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>}
+
+        {editingProfile && (
+          <form onSubmit={handleProfileSave} className="card mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              ['name', 'Full name', 'text'],
+              ['email', 'Email address', 'email'],
+              ['mobileNumber', 'Mobile number', 'tel'],
+            ].map(([name, label, type]) => (
+              <label key={name} className="text-sm font-medium text-gray-700">{label}
+                <input className="input-field mt-1" type={type} value={profileForm[name]} onChange={(event) => setProfileForm({ ...profileForm, [name]: event.target.value })} required />
+              </label>
+            ))}
+            <div className="md:col-span-3"><button disabled={savingProfile} className="btn-primary disabled:opacity-50">{savingProfile ? 'Saving...' : 'Save profile'}</button></div>
+          </form>
         )}
-        {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-            {successMessage}
-          </div>
-        )}
 
-        {/* Risk Status Card */}
-        <div className="card mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Your Risk Status</h2>
-            <RiskBadge level={profile?.riskLevel || 'Low'} />
+        <section className="card mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div><p className="text-sm text-gray-600">Academic risk assessment</p><h2 className="text-xl font-bold text-gray-900 mt-1">Your current standing</h2></div>
+            <RiskBadge level={metrics.riskLevel || student.riskLevel} />
           </div>
-          
-          {profile?.riskLevel === 'Low' ? (
-            <div className="text-gray-700">
-              <p className="mb-2">✅ Great job! You're on track.</p>
-              <p className="text-sm text-gray-600">Keep up the good work with your attendance and assignments!</p>
-            </div>
-          ) : (
-            <div className="text-gray-700">
-              <p className="mb-2 font-semibold">⚠️ Reason: {profile?.riskReason}</p>
-              <p className="text-sm text-gray-600 mb-3">We recommend taking the following actions:</p>
-              <ul className="text-sm space-y-1 ml-4">
-                {profile?.riskReason?.includes('absence') && (
-                  <>
-                    <li>• Attend classes regularly</li>
-                    <li>• Contact your mentor if facing difficulties</li>
-                  </>
-                )}
-                {profile?.riskReason?.includes('assignment') && (
-                  <>
-                    <li>• Submit pending assignments</li>
-                    <li>• Seek help from peers or instructors</li>
-                  </>
-                )}
-                {profile?.riskReason?.includes('performance') && (
-                  <>
-                    <li>• Review study materials</li>
-                    <li>• Consider tutoring or study groups</li>
-                  </>
-                )}
+          <div className="mt-4 grid md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-2">Indicators</h3>
+              <ul className="space-y-1 text-sm text-gray-700">
+                {(profile.riskReasons || []).map((reason) => <li key={reason}>• {reason}</li>)}
               </ul>
             </div>
-          )}
-        </div>
-
-        {/* Statistics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="card">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-600">Attendance Rate</h3>
-              <span className="text-2xl">📊</span>
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-2">Recommended next steps</h3>
+              <ul className="space-y-1 text-sm text-gray-700">
+                {(profile.recommendations || []).map((recommendation) => <li key={recommendation}>• {recommendation}</li>)}
+              </ul>
             </div>
-            <p className="text-3xl font-bold text-blue-600">
-              {metrics?.attendancePercentage || 0}%
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              {profile?.statistics?.presentCount || 0} present / {profile?.statistics?.totalAttendance || 0} total
-            </p>
           </div>
+        </section>
 
-          <div className="card">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-600">Assignment Completion</h3>
-              <span className="text-2xl">📝</span>
-            </div>
-            <p className="text-3xl font-bold text-green-600">
-              {metrics?.assignmentCompletionRate || 0}%
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              {profile?.statistics?.assignmentsSubmitted || 0} submitted / {(profile?.statistics?.assignmentsSubmitted || 0) + (profile?.statistics?.assignmentsMissed || 0)} total
-            </p>
-          </div>
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+          {[
+            ['Attendance', `${metrics.attendancePercentage ?? 0}%`, 'Verified attendance'],
+            ['Current GPA', `${Number(metrics.gpa ?? 0).toFixed(2)} / 10`, 'Current academic record'],
+            ['Assignments', `${metrics.assignmentCompletionRate ?? 0}%`, 'Completion rate'],
+            ['Academic marks', student.academicMarks?.length || 0, 'Recorded assessments'],
+          ].map(([label, value, subtitle]) => (
+            <div key={label} className="card"><p className="text-sm font-medium text-gray-500">{label}</p><p className="text-3xl font-bold text-blue-700 mt-2">{value}</p><p className="text-xs text-gray-500 mt-2">{subtitle}</p></div>
+          ))}
+        </section>
 
-          <div className="card">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-600">Average Performance</h3>
-              <span className="text-2xl">🎯</span>
-            </div>
-            <p className="text-3xl font-bold text-purple-600">
-              {profile?.statistics?.averagePerformance?.toFixed(1) || 0}%
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Based on {profile?.statistics?.performanceScores?.length || 0} tests
-            </p>
-          </div>
-        </div>
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1"><EngagementForm onSubmit={handleEventSubmit} loading={submitting} /></div>
+          <div className="lg:col-span-2"><EngagementChart events={recentEvents} student={student} /></div>
+        </section>
 
-        {/* Engagement Form and Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <EngagementForm onSubmit={handleEventSubmit} loading={submitting} />
-          </div>
-
-          <div className="lg:col-span-2">
-            <EngagementChart events={recentEvents} />
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        {recentEvents && recentEvents.length > 0 && (
-          <div className="card mt-6">
-            <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-            <div className="space-y-3">
-              {recentEvents.slice(0, 5).map((event, idx) => (
-                <div key={idx} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <span className="font-medium capitalize">{event.eventType}</span>
-                    <span className="text-gray-500 text-sm ml-2">
-                      {event.eventType === 'attendance' && `- ${event.eventData.status}`}
-                      {event.eventType === 'assignment' && `- ${event.eventData.assignmentName} (${event.eventData.submitted ? 'Submitted' : 'Missed'})`}
-                      {event.eventType === 'performance' && `- ${event.eventData.testName} (${event.eventData.score}%)`}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(event.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
+        {recentEvents.length > 0 && (
+          <section className="card mt-6">
+            <h2 className="text-lg font-semibold mb-4">Student-reported activity</h2>
+            <ul className="divide-y divide-gray-100">
+              {recentEvents.slice(0, 8).map((event) => (
+                <li key={event._id} className="py-3 flex flex-wrap justify-between gap-2 text-sm">
+                  <span><strong className="capitalize">{event.eventType}</strong> · {event.eventType === 'attendance' ? event.eventData.status : event.eventType === 'assignment' ? `${event.eventData.assignmentName} (${event.eventData.submitted ? 'submitted' : 'missed'})` : `${event.eventData.testName} (${event.eventData.score})`}</span>
+                  <time className="text-gray-500">{new Date(event.createdAt).toLocaleDateString()}</time>
+                </li>
               ))}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
-      </div>
+      </main>
     </div>
   );
 };
 
 export default StudentDashboard;
-
-
-
-
-
-
-

@@ -41,9 +41,11 @@ const Register = ({ onLogin }) => {
       navigate('/dashboard');
     } catch (requestError) {
       const message = requestError.response?.data?.message
-        || (requestError.code === 'ERR_NETWORK'
-          ? 'Cannot reach CAMPUS IQ. Check that the backend is running, then try again.'
-          : 'Registration could not be completed. Please try again.');
+        || (requestError.response
+          ? `Registration request failed (HTTP ${requestError.response.status}). Please retry or contact an administrator.`
+          : requestError.code === 'ERR_NETWORK'
+            ? 'Cannot reach the CAMPUS IQ API. Confirm the backend is running at http://localhost:5000, then retry.'
+            : `Registration request failed: ${requestError.message || 'unknown client error'}`);
       setError(message);
     } finally {
       setLoading(false);

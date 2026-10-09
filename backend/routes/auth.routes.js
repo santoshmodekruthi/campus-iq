@@ -79,11 +79,17 @@ router.post('/register', async (req, res) => {
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ success: false, message: 'Email, registration number, or student ID is already in use' });
     if (error.name === 'ValidationError') return res.status(400).json({ success: false, message: error.message });
-    console.error('Registration error:', error);
-    if (error.name === 'MongooseServerSelectionError' || error.message?.includes('buffering timed out')) {
+    const databaseUnavailable = [
+      'MongooseServerSelectionError',
+      'MongoServerSelectionError',
+      'MongoNetworkError',
+      'MongoTopologyClosedError',
+    ].includes(error.name) || error.message?.includes('buffering timed out');
+    console.error('Registration error:', error.name, error.message);
+    if (databaseUnavailable) {
       return res.status(503).json({ success: false, message: 'Registration is temporarily unavailable because the database cannot be reached. Please retry shortly.' });
     }
-    return res.status(500).json({ success: false, message: 'We could not complete registration. If this email or registration number is already registered, sign in instead; otherwise retry or contact an administrator.' });
+    return res.status(500).json({ success: false, message: 'Registration could not be completed due to a server error. Please retry; if the error continues, contact an administrator.' });
   }
 });
 
